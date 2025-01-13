@@ -2,26 +2,35 @@ import os
 import json
 import numpy as np
 
+
+# recipe struct
 class Recipe:
     def __init__(self, ins, outs, machine):
         self.ins = ins
         self.outs = outs
         self.machine = machine
 
-# load recipes from file: recipes.json
 
+# load recipes from file: recipes.json
 if not os.path.exists("recipes.json"):
     with open("recipes.json", "w") as f:
         f.write("{\n\t\"base_items\" : [\n\t\n\t],\n\t\"recipes\" : [\n\t\n\t]\n}")
 
 json_data = json.load(open("recipes.json", "r"))
-
 base_items = json_data["base_items"]
 recipe_unformatted = json_data["recipes"]
 
 recipes = []
 for recipe in recipe_unformatted:
     recipes.append(Recipe(recipe[0], recipe[1], recipe[2]))
+
+reset_colour = "\x1b[0m"
+text_colours = ["\x1b[38;5;255m", "\x1b[38;5;252m", "\x1b[38;5;250m", "\x1b[38;5;248m",
+                "\x1b[38;5;246m", "\x1b[38;5;244m", "\x1b[38;5;242m", "\x1b[38;5;240m",
+                "\x1b[38;5;238m", "\x1b[38;5;236m", "\x1b[38;5;234m", "\x1b[38;5;232m"]
+
+# use this array to get total items at the end
+raw_required = []
 
 
 def search_recipes(query):
@@ -45,6 +54,7 @@ def save_recipes():
 
     with open("recipes.json", "w") as f:
         json.dump({"base_items": base_items, "recipes": formatted_recipes}, f, indent=4)
+
 
 def add_recipe_prompt(req_item):
     db_dialog = input(f"{req_item} not found in recipe database. Add it to db? [Y/N]: ")
@@ -78,6 +88,10 @@ def add_recipe_prompt(req_item):
         add_recipe(Recipe(inputs_formatted, outputs_formatted, machine))
 
 
+def change_recipe_dialog():
+    recipe_num = input("[TODO: print all recipes in box dialog]\nRecipe number: ")
+    change_recipe(int(recipe_num))
+
 
 def change_recipe(recipe_num):
     print(
@@ -107,6 +121,8 @@ def change_recipe(recipe_num):
 
 def get_recipe_str(recipe, recursion_level, scale):
     output_str = ""
+    text_colour = text_colours[recursion_level % len(text_colours)]
+    prev_text_colour = text_colours[(recursion_level - 1) % len(text_colours)]
 
     # string for output items
     for i in range(len(recipe.outs)):
@@ -114,7 +130,7 @@ def get_recipe_str(recipe, recursion_level, scale):
         if i > 0:  # multiple items
             output_temp += ", "
 
-        output_temp += f"{list(recipe.outs.keys())[i]} x{list(recipe.outs.values())[i] * scale}"
+        output_temp += f"{prev_text_colour}{list(recipe.outs.keys())[i]} x{list(recipe.outs.values())[i] * scale}{text_colour}"
         output_str += output_temp
 
     input_str = ""
@@ -145,30 +161,40 @@ def get_recipe_str(recipe, recursion_level, scale):
             # no recipe, not base item
             add_recipe_prompt(current_item)
             output_temp += " " * recursion_level * 4 + f"{current_item} x{list(recipe.ins.values())[i] * scale}"
-            pass
         input_str += output_temp
 
-    return f"{output_str}: {recipe.machine}\n" + f"{input_str}"
+    return f"{output_str}\n{input_str}"
 
 
 def main():
     # TODO: ability to change recipe
+    # +---+---------------------------------------------------------------+
+    # | 0 |  {Item1: amount1, etc.} -[Machine]-> {output1: amount1, etc.} |
+    # |...| ...                                                           |
+    # +---+---------------------------------------------------------------+
+    # TODO: colourful output
+    # TODO: total amount of raw items at the bottom
+    # TODO: error handling and input validation
 
     while True:
         request = input("Item x Amount (Example: Electronic Circuit x5. Type change to change a recipe, exit to exit): ")
         if request == "exit":
             break
 
+        elif request == "change":
+            change_recipe_dialog()
+            continue
+
         req_item = request.split(" x")[0]
-        req_amount = int(request.split(" x")[1])
+        req_amount = 1 if " x" not in request else int(request.split(" x")[1])
 
         # checks if item is in recipe db
         results = search_recipes(req_item)
 
         if results:
             # item is in recipe db, so it outputs the recipe
-            recipe = results[0]
-            print(get_recipe_str(recipe, 1, req_amount) + "\n")
+            req_recipe = results[0]
+            print(get_recipe_str(req_recipe, 1, req_amount) + "\n")
         else:
             # prompts user to add item to recipe db
             add_recipe_prompt(req_item)
@@ -176,7 +202,6 @@ def main():
         save_recipes()
 
     save_recipes()
-
 
 
 if __name__ == '__main__':
