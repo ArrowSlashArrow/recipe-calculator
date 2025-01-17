@@ -45,6 +45,7 @@ def search_recipes(query):
 
 def add_recipe(recipe):
     recipes.append(recipe)
+    save_recipes()
 
 
 def save_recipes():
@@ -128,7 +129,7 @@ def get_recipe_str(recipe, recursion_level, scale):
     for i in range(len(recipe.outs)):
         output_temp = ""
         if i > 0:  # multiple items
-            output_temp += ", "
+            output_temp += f", {text_colour}"
 
         output_temp += f"{prev_text_colour}{list(recipe.outs.keys())[i]} x{list(recipe.outs.values())[i] * scale}{text_colour}"
         output_str += output_temp
