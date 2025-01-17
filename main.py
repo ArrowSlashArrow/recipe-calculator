@@ -2,6 +2,7 @@ import os
 import json
 import numpy as np
 
+# TODO: refactor with flowchart
 
 # recipe struct
 class Recipe:
@@ -12,8 +13,10 @@ class Recipe:
 
 
 # load recipes from file: recipes.json
+# creates not recipes.json if it doesnt exist
 if not os.path.exists("recipes.json"):
     with open("recipes.json", "w") as f:
+        # template
         f.write("{\n\t\"base_items\" : [\n\t\n\t],\n\t\"recipes\" : [\n\t\n\t]\n}")
 
 json_data = json.load(open("recipes.json", "r"))
@@ -25,12 +28,16 @@ for recipe in recipe_unformatted:
     recipes.append(Recipe(recipe[0], recipe[1], recipe[2]))
 
 reset_colour = "\x1b[0m"
-text_colours = ["\x1b[38;5;255m", "\x1b[38;5;252m", "\x1b[38;5;250m", "\x1b[38;5;248m",
-                "\x1b[38;5;246m", "\x1b[38;5;244m", "\x1b[38;5;242m", "\x1b[38;5;240m",
-                "\x1b[38;5;238m", "\x1b[38;5;236m", "\x1b[38;5;234m", "\x1b[38;5;232m"]
+text_colours = ["\x1b[48;5;255m", "\x1b[48;5;254m", "\x1b[48;5;253m", "\x1b[48;5;252m",
+               "\x1b[48;5;251m", "\x1b[48;5;250m", "\x1b[48;5;249m", "\x1b[48;5;248m",
+               "\x1b[48;5;247m", "\x1b[48;5;246m", "\x1b[48;5;245m", "\x1b[48;5;244m",
+               "\x1b[48;5;243m", "\x1b[48;5;242m", "\x1b[48;5;241m", "\x1b[48;5;240m",
+               "\x1b[48;5;239m", "\x1b[48;5;238m", "\x1b[48;5;237m", "\x1b[48;5;236m",
+               "\x1b[48;5;235m", "\x1b[48;5;234m", "\x1b[48;5;233m", "\x1b[48;5;232m",
+]
 
 # use this array to get total items at the end
-raw_required = []
+raw_required = {}
 
 
 def search_recipes(query):
@@ -56,6 +63,9 @@ def save_recipes():
     with open("recipes.json", "w") as f:
         json.dump({"base_items": base_items, "recipes": formatted_recipes}, f, indent=4)
 
+def format_dict(dict):
+    return ''.join(f"{key} x{value}, " for key, value in dict.items())
+
 
 def add_recipe_prompt(req_item):
     db_dialog = input(f"{req_item} not found in recipe database. Add it to db? [Y/N]: ")
@@ -68,7 +78,7 @@ def add_recipe_prompt(req_item):
 
         outputs = input("Enter outputs separated by commas (Example: Electronic Circuit x1, etc.): ")
         machine = input(f"Enter machine in which {req_item} is made: ")
-
+        
         input_items = []
         input_amounts = []
         for inp in inputs.split(", "):
@@ -120,18 +130,27 @@ def change_recipe(recipe_num):
 
     recipes[recipe_num] = Recipe(inputs_formatted, outputs_formatted, machine)
 
+
 def get_recipe_str(recipe, recursion_level, scale):
+    global raw_required
+
+
+    # fix these bomboclat colours
     output_str = ""
-    text_colour = text_colours[recursion_level % len(text_colours)]
-    prev_text_colour = text_colours[(recursion_level - 1) % len(text_colours)]
+    text_bg_index = recursion_level % len(text_colours)
+    prev_bg_index = (recursion_level - 1) % len(text_colours)
+    text_bg = text_colours[text_bg_index]
+    prev_bg = text_colours[prev_bg_index]
+    text_colour = '\x1b[38;5;255m' if text_bg_index > 11 else '\x1b[38;5;232m'
+    prev_text_colour = '\x1b[38;5;255m' if prev_bg_index > 11 else '\x1b[38;5;232m'
 
     # string for output items
     for i in range(len(recipe.outs)):
         output_temp = ""
         if i > 0:  # multiple items
-            output_temp += f", {text_colour}"
+            output_temp += f", "
 
-        output_temp += f"{prev_text_colour}{list(recipe.outs.keys())[i]} x{list(recipe.outs.values())[i] * scale}{text_colour}"
+        output_temp += f"{prev_text_colour}{prev_bg}{list(recipe.outs.keys())[i]} x{list(recipe.outs.values())[i] * scale}{text_colour}"
         output_str += output_temp
 
     input_str = ""
@@ -143,25 +162,29 @@ def get_recipe_str(recipe, recursion_level, scale):
         # initialise string
         output_temp = ""
         if i > 0:  # multiple items, so multiple lines
-            output_temp += "\n"
+            output_temp += f"{reset_colour}\n{reset_colour}"
 
         current_item = input_item_array[i]
 
         # recursion
         if current_item in base_items:
             # base item, has no recipe
-            output_temp += " " * recursion_level * 4 + f"{current_item} x{list(recipe.ins.values())[i] * scale}"
-
+            output_temp += f"{text_colour}{text_bg}" + " " * recursion_level * 4 + f"{current_item} x{list(recipe.ins.values())[i] * scale}{reset_colour}"
+            if current_item in raw_required:
+                raw_required[current_item] += scale
+            else:
+                raw_required[current_item] = scale
+        
         elif search_recipes(current_item):
             # has recipe
             new_recipe = search_recipes(current_item)[0]
             new_recipe_amount = list(new_recipe.outs.values())[0]
-            output_temp += " " * recursion_level * 4 + get_recipe_str(new_recipe, recursion_level + 1, int(np.ceil(scale / new_recipe_amount)))
+            output_temp += f"{text_colour}{text_bg}" + " " * recursion_level * 4 + get_recipe_str(new_recipe, recursion_level + 1, int(np.ceil(scale / new_recipe_amount))) + f"{reset_colour}"
 
         else:
             # no recipe, not base item
             add_recipe_prompt(current_item)
-            output_temp += " " * recursion_level * 4 + f"{current_item} x{list(recipe.ins.values())[i] * scale}"
+            output_temp += f"{text_colour}{text_bg}" + " " * recursion_level * 4 + f"{current_item} x{list(recipe.ins.values())[i] * scale}" + f"{reset_colour}"
         input_str += output_temp
 
     return f"{output_str}\n{input_str}"
@@ -173,8 +196,7 @@ def main():
     # | 0 |  {Item1: amount1, etc.} -[Machine]-> {output1: amount1, etc.} |
     # |...| ...                                                           |
     # +---+---------------------------------------------------------------+
-    # TODO: colourful output
-    # TODO: total amount of raw items at the bottom
+    # TODO: fix output colour scheme
     # TODO: error handling and input validation
 
     while True:
@@ -195,7 +217,9 @@ def main():
         if results:
             # item is in recipe db, so it outputs the recipe
             req_recipe = results[0]
-            print(get_recipe_str(req_recipe, 1, req_amount) + "\n")
+            print(reset_colour + get_recipe_str(req_recipe, 1, req_amount) + f"{reset_colour}\n")
+            # unformatted
+            print(f"Raw materials required to craft this: {format_dict(raw_required)}\b\b")
         else:
             # prompts user to add item to recipe db
             add_recipe_prompt(req_item)
