@@ -1,5 +1,7 @@
 import os
 import json
+import re
+from ui import *
 
 # +---+---------------------------------------------------------------+
 # | 0 |  {Item1: amount1, etc.} -[Machine]-> {output1: amount1, etc.} |
@@ -9,17 +11,10 @@ import json
 # TODO: ability to pick from multiple recipes when crafting
 # TODO: multiple recipe dbs for different mods/versions
 # TODO: rephrase prompts to be more user friendly (maybe add a user guide)
-# TODO: commands (ls, exit, etc.)
-# COMMANDS
-# ls - list recipes
-# change - change recipe
-# flush - flush recipe db (clear)
-# exit - exit program
-# help - print help (commands message)
-# export - export prev recipe str to file
-# rmb - remove base item
-# rmr - remove recipe
-# swdb - switch recipe db
+
+# regular expression to remove ansi codes
+ansi_escape = re.compile(r"\x1b\[[0-9;]*m")
+# matches: [esc]\[ + any digit or ; + any number of those characters + m
 
 # recipe struct
 class Recipe:
@@ -35,6 +30,10 @@ if not os.path.exists("recipes.json"):
     with open("recipes.json", "w") as f:
         # write template string to recipes file (indented)
         f.write("{\n\t\"base_items\" : [\n\t\n\t],\n\t\"recipes\" : [\n\t\n\t]\n}")
+
+# create exports folder
+if not os.path.isdir("exports"):
+    os.mkdir("exports")
 
 # load recipes from file: recipes.json
 json_data = json.load(open("recipes.json", "r"))
@@ -154,10 +153,9 @@ def add_recipe_prompt(req_item):
 
 
 def change_recipe_dialog():
-    # TODO: print all recipes in box dialog
-
-    recipe_num = input("[TODO: print all recipes in box dialog]\nRecipe number: ")
-    change_recipe_prompt(int(recipe_num))
+    print_recipes()
+    recipe_num = get_int(len(recipes), "Recipe number: ")
+    change_recipe_prompt(recipe_num)
 
 
 def change_recipe_prompt(recipe_num):
@@ -168,7 +166,12 @@ def change_recipe_prompt(recipe_num):
         "x144\x1b[0m")
 
     # get user input
-    inputs = input("New recipe inputs (Example: Resistor x2, Steel Casing x1, etc.): ")
+    inputs = input("New recipe inputs (Example: Resistor x2, Steel Casing x1, etc.) Type raw to mark it as a raw material: ")
+    if inputs == "raw":
+        base_items.append(inputs)
+        recipes.pop(recipe_num)
+        return
+
     outputs = input("New recipe outputs (Example: Electronic Circuit x1, etc.): ")
     machine = input("New recipe machine: ")
 
@@ -276,43 +279,132 @@ def get_recipe_str(req_recipe, recursion_level, scale):
     return f"{output_str}\n{input_str}"
 
 
+def print_recipes():
+    print("Recipes:")
+    options = [str(option) for option in list(range(len(recipes)))]
+    input_strs = [f"{format_dict(recipe.ins)}\b\b" for recipe in recipes]
+    machines = [recipe.machine for recipe in recipes]
+    output_strs = [f"{format_dict(recipe.outs)}\b\b" for recipe in recipes]
+
+    max_input_length = max(len(inp) for inp in input_strs)
+    max_machine_length = max(len(mach) for mach in machines)
+    max_output_length = max(len(out) for out in output_strs)
+
+    descriptions = [f"{item[0]:>{max_input_length}} -[ {item[1]:^{max_machine_length}} ]-> {item[2]:<{max_output_length}}" for item in zip(input_strs, machines, output_strs)]
+
+    display_options(options, descriptions, max(len(item) for item in descriptions) - 8)
+
+
+def print_base_items():
+    print("Raw materials:")
+    options = list(range(len(base_items)))
+    descriptions = base_items
+    display_options(options, descriptions)
+
+
+def remove_base_item():
+    print_base_items()
+    item_num = get_int(len(base_items), "Type the number corresponding to the raw material you want to remove: ")
+    # remove chosen item
+    base_items.pop(item_num)
+
+
+def remove_recipe():
+    print_recipes()
+    item_num = get_int(len(recipes), "Type the number corresponding to the recipe you want to remove: ")
+    # remove chosen recipe
+    recipes.pop(item_num)
+
+
+def export_recipe_str(recipe_str):
+    file_name = input("Enter the name of the file to export to: ")
+    # remove ansi codes
+    clean_str = ansi_escape.sub('', recipe_str)
+    with open(f"exports/{file_name}.txt", "w") as output_file:
+        output_file.write(clean_str)
+
+
 def main():
     # i don't like global vars but whatever
-    global raw_required
+    global raw_required, base_items, recipes
+
+    prev_output_str = ""
     while True:
         request = input(
-            "Item x Amount (Example: Electronic Circuit x5. Type change to change a recipe, exit to exit): ")
-        if request == "exit":
-            break
+            "Item x Amount (Example: Electronic Circuit x5). Type help for a list of commands: ")
 
-        elif request == "change":
-            change_recipe_dialog()
-            continue
+        # COMMANDS
+        # ls - list recipes: done
+        # change - change recipe: done
+        # flush - flush recipe db (clear): done
+        # exit - exit program: done
+        # help - print help (commands message): done
+        # export - export prev recipe str to file
+        # rmb - remove base item: done
+        # rmr - remove recipe: done
+        # sdb - switch recipe db
 
-        req_item = request.split(" x")[0]
-        req_amount = 1 if " x" not in request else int(request.split(" x")[1])
+        match request:
+            case "ls":
+                print_recipes()
+                continue
+            case "change":
+                change_recipe_dialog()
+                continue
+            case "flush":
+                base_items = []
+                recipes = []
+                continue
+            case "exit":
+                break
+            case "help":
+                commands = ["ls", "change", "flush", "exit", "help", "export", "rmb", "rmr"]
+                descriptions = ["List all recipes", "Change a recipe", "Clear recipes and raw items", "Exit program",
+                                "Print this help message", "Export the previous recipe string to a file",
+                                "Remove a base item", "Remove a recipe"]
 
-        # checks if item is in recipe db
-        results = search_recipes(req_item)
+                display_options(commands, descriptions)
+                continue
+            case "export":
+                export_recipe_str(prev_output_str)
+                continue
+            case "rmb":
+                remove_base_item()
+                continue
+            case "rmr":
+                remove_recipe()
+                continue
+            case "sdb":
+                pass  # maybe add this in the distant future
+            case _:
+                req_item = request.split(" x")[0]
+                req_amount = 1 if " x" not in request else int(request.split(" x")[1])
 
-        if results:  # if item is in recipe db:
-            # get the first recipe
-            req_recipe = results[0]
-            # get string for recipe and raw materials
-            req_recipe_str = get_recipe_str(req_recipe, 1, req_amount)
-            raw_required_str = f"\x1b[1m{format_dict(raw_required)}\b\b"
+                # checks if item is in recipe db
+                results = search_recipes(req_item)
 
-            # print formatted output
-            print(f"{reset_colour}{req_recipe_str}\n{reset_colour}")
-            print(f"Raw materials required to craft {req_item} x{req_amount}: {raw_required_str} {reset_colour}")
-        else:  # if item is not in recipe db:
-            # prompts user to add item to recipe db
-            add_recipe_prompt(req_item)
+                if results:  # if item is in recipe db:
+                    # get the first recipe
+                    req_recipe = results[0]
+                    # get string for recipe and raw materials
+                    req_recipe_str = get_recipe_str(req_recipe, 1, req_amount)
+                    raw_required_str = f"\x1b[1m{format_dict(raw_required)}"[:-2]
 
-        save_recipes()
+                    recipe_out_str = f"{reset_colour}{req_recipe_str}\n{reset_colour}"
+                    raw_out_str = f"Raw materials required to craft {req_item} x{req_amount}: {raw_required_str} {reset_colour}"
+                    # print formatted output
+                    output_str = f"{recipe_out_str}\n{raw_out_str}"
+                    print(output_str)
 
-        # reset raw_required dict
-        raw_required = {}
+                    prev_output_str = output_str
+                else:  # if item is not in recipe db:
+                    # prompts user to add item to recipe db
+                    add_recipe_prompt(req_item)
+
+                save_recipes()
+
+                # reset raw_required dict
+                raw_required = {}
 
     save_recipes()
 
