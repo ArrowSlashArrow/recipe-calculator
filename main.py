@@ -278,7 +278,7 @@ def get_recipe_str(req_recipe, recursion_level, scale):
 
 def main():
     # i don't like global vars but whatever
-    global raw_requiredmd
+    global raw_required
     while True:
         request = input(
             "Item x Amount (Example: Electronic Circuit x5. Type change to change a recipe, exit to exit): ")
