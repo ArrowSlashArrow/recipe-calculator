@@ -16,7 +16,7 @@ def get_int(max_val, message="Enter an integer: "):
             print("Invalid input. Please enter an integer between 0 and " + str(max_val) + ".")
 
 
-def display_options(options, descriptions, desc_length=None):
+def display_options(options, descriptions, desc_length=None, align_char=" "):
     options = [str(option) for option in options]
     descriptions = [str(description) for description in descriptions]
     max_option_length = max(len(opt) for opt in options)
@@ -27,6 +27,6 @@ def display_options(options, descriptions, desc_length=None):
 
     print(border_str)
     for item in zip(options, descriptions):
-        print(f"| {item[0].ljust(max_option_length)} | {item[1].ljust(max_description_length)} |")
+        print(f"| {item[0]:{align_char}>{max_option_length}} | {item[1]:<{max_description_length}} |")
 
     print(border_str)

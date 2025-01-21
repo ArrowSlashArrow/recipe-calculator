@@ -10,7 +10,13 @@ from ui import *
 # TODO: refactor whole thing with flowchart
 # TODO: ability to pick from multiple recipes when crafting
 # TODO: multiple recipe dbs for different mods/versions
-# TODO: rephrase prompts to be more user friendly (maybe add a user guide)
+# TODO: rephrase prompts to be more user friendly + user guide in readme
+# TODO: handle recursion limit
+#  --> if a recipe loops back on itself, it will recurse infinitely, and will eventually trigger a RecursionError
+# TODO: scraper, so that recipes can be added automatically
+# TODO: input validation
+
+
 
 # regular expression to remove ansi codes
 ansi_escape = re.compile(r"\x1b\[[0-9;]*m")
@@ -29,21 +35,21 @@ class Recipe:
 if not os.path.exists("recipes.json"):
     with open("recipes.json", "w") as f:
         # write template string to recipes file (indented)
-        f.write("{\n\t\"base_items\" : [\n\t\n\t],\n\t\"recipes\" : [\n\t\n\t]\n}")
+        template = """
+        {
+            "base_items" : [
+
+            ],
+            "recipes" : [
+
+            ]
+        }
+        """
+        json.dump(json.loads(template), f, indent=4)
 
 # create exports folder
 if not os.path.isdir("exports"):
     os.mkdir("exports")
-
-# load recipes from file: recipes.json
-json_data = json.load(open("recipes.json", "r"))
-base_items = json_data["base_items"]
-raw_recipes = json_data["recipes"]
-
-# format recipes into a list of Recipe objects
-recipes = []
-for recipe in raw_recipes:
-    recipes.append(Recipe(recipe[0], recipe[1], recipe[2]))
 
 # colours for text formatting
 reset_colour = "\x1b[0m"
@@ -99,10 +105,36 @@ def save_recipes():
         json.dump({"base_items": base_items, "recipes": formatted_recipes}, recipes_file, indent=4)
 
 
+def load_recipes(recipes_file):
+    # if trying to load a non-existent file, prompt to create it
+
+    # load recipes from file: recipes.json
+    json_data = json.load(open(recipes_file, "r"))
+    base_items = json_data["base_items"]
+    raw_recipes = json_data["recipes"]
+
+    # format recipes into a list of Recipe objects
+    recipes = []
+    for recipe in raw_recipes:
+        recipes.append(Recipe(recipe[0], recipe[1], recipe[2]))
+
+    return base_items, recipes
+
+
 def format_dict(dictionary):
     # format dictionary with list comprehension
-    return ''.join(f"{key} x{value}, " for key, value in dictionary.items())
+    return ''.join(f"{key} x{value}, " for key, value in dictionary.items()) + "\b\b"
 
+
+def str_into_dict(string):
+    items = []
+    amounts = []
+    for item in string.split(", "):
+        item_split = item.split(" x")
+        items.append(item_split[0])
+        amounts.append(int(item_split[1]))
+
+    return dict(zip(items, amounts))
 
 def add_recipe_prompt(req_item):
     db_dialog = input(f"{req_item} not found in recipe database. Add it to db? [Y/N]: ") + " "
@@ -126,27 +158,8 @@ def add_recipe_prompt(req_item):
         outputs = input("Enter outputs separated by commas (Example: Electronic Circuit x1, etc.): ")
         machine = input(f"Enter machine in which {req_item} is made: ")
 
-        # parse inputs
-        input_items = []
-        input_amounts = []
-        for inp in inputs.split(", "):
-            # split each input item into item str and amount
-            inp_split = inp.split(" x")
-            input_items.append(inp_split[0])  # item
-            input_amounts.append(int(inp_split[1]))  # amount
-
-        # parse outputs
-        output_items = []
-        output_amounts = []
-        for out in outputs.split(", "):
-            # split each output item into item str and amount
-            out_split = out.split(" x")
-            output_items.append(out_split[0])  # item
-            output_amounts.append(int(out_split[1]))  # amount
-
-        # format inputs and outputs into dictionaries
-        inputs_formatted = dict(zip(input_items, input_amounts))
-        outputs_formatted = dict(zip(output_items, output_amounts))
+        inputs_formatted = str_into_dict(inputs)
+        outputs_formatted = str_into_dict(outputs)
 
         # add the recipe
         add_recipe(Recipe(inputs_formatted, outputs_formatted, machine))
@@ -159,6 +172,11 @@ def change_recipe_dialog():
 
 
 def change_recipe_prompt(recipe_num):
+    original_inputs = recipes[recipe_num].ins
+    original_outputs = recipes[recipe_num].outs
+    original_machine = recipes[recipe_num].machine
+    print(f"Original recipe: {format_dict(original_inputs)} -[ {original_machine} ]-> {format_dict(original_outputs)}")
+
     # info message
     print(
         "\x1b[1m\x1b[3mNOTE: \x1b[23mThe amount of a certain fluid should be inputted as the amount of millibuckets "
@@ -175,25 +193,9 @@ def change_recipe_prompt(recipe_num):
     outputs = input("New recipe outputs (Example: Electronic Circuit x1, etc.): ")
     machine = input("New recipe machine: ")
 
-    # parse input
-    input_items = []
-    input_amounts = []
-    for inp in inputs.split(", "):
-        inp_split = inp.split(" x")
-        input_items.append(inp_split[0])
-        input_amounts.append(int(inp_split[1]))
-
-    # parse outputs
-    output_items = []
-    output_amounts = []
-    for out in outputs.split(", "):
-        out_split = out.split(" x")
-        output_items.append(out_split[0])
-        output_amounts.append(int(out_split[1]))
-
     # format inputs and outputs into dictionaries
-    inputs_formatted = dict(zip(input_items, input_amounts))
-    outputs_formatted = dict(zip(output_items, output_amounts))
+    inputs_formatted = str_into_dict(inputs)
+    outputs_formatted = str_into_dict(outputs)
 
     # commit changes
     recipes[recipe_num] = Recipe(inputs_formatted, outputs_formatted, machine)
@@ -223,13 +225,10 @@ def get_recipe_str(req_recipe, recursion_level, scale):
 
     # string for output items
     for i in range(len(req_recipe.outs)):
-        # initialise string
-        output_temp = ""
-        if i > 0:  # if there are multiple items, add a comma in between them
-            output_temp += f", "
-
         # add item and amount to string
-        output_str += f"{prev_colour}{prev_bg}{output_items[i]} x{output_amounts[i] * scale}: {req_recipe.machine}{reset_colour}"
+        output_str += (", " if i > 0 else "") + f"{prev_colour}{prev_bg}{output_items[i]} x{output_amounts[i] * scale}"
+
+    output_str += f": {req_recipe.machine}{reset_colour}"
 
 
     # string for input items
@@ -282,9 +281,9 @@ def get_recipe_str(req_recipe, recursion_level, scale):
 def print_recipes():
     print("Recipes:")
     options = [str(option) for option in list(range(len(recipes)))]
-    input_strs = [f"{format_dict(recipe.ins)}\b\b" for recipe in recipes]
+    input_strs = [format_dict(recipe.ins) for recipe in recipes]
     machines = [recipe.machine for recipe in recipes]
-    output_strs = [f"{format_dict(recipe.outs)}\b\b" for recipe in recipes]
+    output_strs = [format_dict(recipe.outs) for recipe in recipes]
 
     max_input_length = max(len(inp) for inp in input_strs)
     max_machine_length = max(len(mach) for mach in machines)
@@ -292,7 +291,7 @@ def print_recipes():
 
     descriptions = [f"{item[0]:>{max_input_length}} -[ {item[1]:^{max_machine_length}} ]-> {item[2]:<{max_output_length}}" for item in zip(input_strs, machines, output_strs)]
 
-    display_options(options, descriptions, max(len(item) for item in descriptions) - 8)
+    display_options(options, descriptions, max(len(item) for item in descriptions) - 8, '0')
 
 
 def print_base_items():
@@ -327,6 +326,8 @@ def export_recipe_str(recipe_str):
 def main():
     # i don't like global vars but whatever
     global raw_required, base_items, recipes
+
+    base_items, recipes = load_recipes("recipes.json")
 
     prev_output_str = ""
     while True:
@@ -366,7 +367,7 @@ def main():
                 display_options(commands, descriptions)
                 continue
             case "export":
-                export_recipe_str(prev_output_str)
+                export_recipe_str(prev_output_str[:-4])
                 continue
             case "rmb":
                 remove_base_item()
@@ -388,7 +389,7 @@ def main():
                     req_recipe = results[0]
                     # get string for recipe and raw materials
                     req_recipe_str = get_recipe_str(req_recipe, 1, req_amount)
-                    raw_required_str = f"\x1b[1m{format_dict(raw_required)}"[:-2]
+                    raw_required_str = f"\x1b[1m{format_dict(raw_required)}"
 
                     recipe_out_str = f"{reset_colour}{req_recipe_str}\n{reset_colour}"
                     raw_out_str = f"Raw materials required to craft {req_item} x{req_amount}: {raw_required_str} {reset_colour}"
