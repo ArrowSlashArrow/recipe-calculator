@@ -9,16 +9,16 @@ from ui import *
 # +---+---------------------------------------------------------------+
 # TODO: refactor whole thing with flowchart
 # TODO: ability to pick from multiple recipes when crafting
-# TODO: multiple recipe dbs for different mods/versions
+# TODO: print steps of how much ingredients to craft (the items listed should be crafted in this order)
+#  --> for example: "Stick x2, Rubber Sheet x1, Circuit Board x1, etc."
 # TODO: rephrase prompts to be more user friendly + user guide in readme
 # TODO: handle recursion limit
 #  --> if a recipe loops back on itself, it will recurse infinitely, and will eventually trigger a RecursionError
 # TODO: scraper, so that recipes can be added automatically
 # TODO: input validation
 
-
-
 # regular expression to remove ansi codes
+
 ansi_escape = re.compile(r"\x1b\[[0-9;]*m")
 # matches: [esc]\[ + any digit or ; + any number of those characters + m
 
@@ -30,21 +30,13 @@ class Recipe:
         self.machine = machine
 
 
+template = '{"base_items" : [], "recipes" : []}'
+
 # load recipes from file: recipes.json
 # creates not recipes.json if it doesn't exist
 if not os.path.exists("recipes.json"):
     with open("recipes.json", "w") as f:
-        # write template string to recipes file (indented)
-        template = """
-        {
-            "base_items" : [
-
-            ],
-            "recipes" : [
-
-            ]
-        }
-        """
+        # write template string to recipes file (indented) and save
         json.dump(json.loads(template), f, indent=4)
 
 # create exports folder
@@ -90,10 +82,10 @@ def search_recipes(query):
 def add_recipe(additional_recipe):
     # add recipe to db and save it
     recipes.append(additional_recipe)
-    save_recipes()
+    save_recipes("recipes.json")
 
 
-def save_recipes():
+def save_recipes(file_name):
     # format recipes list into JSON-able list
     formatted_recipes = []
     for recipe in recipes:
@@ -101,12 +93,19 @@ def save_recipes():
 
     # write base items and formatted recipes to recipes file
     # this overwrites the whole file, could perform poorly with large files
-    with open("recipes.json", "w") as recipes_file:
+    with open(file_name, "w+") as recipes_file:
         json.dump({"base_items": base_items, "recipes": formatted_recipes}, recipes_file, indent=4)
 
 
+# returns base items, recipes
 def load_recipes(recipes_file):
-    # if trying to load a non-existent file, prompt to create it
+    global template
+    # if file doesnt exist
+    if not os.path.exists(recipes_file):
+        # make it
+        with open(recipes_file, "w+") as f:
+            # write template string to recipes file (indented)
+            json.dump(json.loads(template), f, indent=4)
 
     # load recipes from file: recipes.json
     json_data = json.load(open(recipes_file, "r"))
@@ -294,6 +293,25 @@ def print_recipes():
     display_options(options, descriptions, max(len(item) for item in descriptions) - 8, '0')
 
 
+
+def lsdb():
+    print("Recipe databases:")
+    files = [file for file in os.listdir(".") if file.endswith(".json")]
+    options = list(range(len(files)))
+    descriptions = files
+    display_options(options, descriptions)
+
+
+def new_db():
+    global base_items, recipes
+    lsdb()
+    print("if you want to create a new db, enter the name of the new db")
+    new_name = input("Switch to db: ")
+    old_name = input("Where to save current db? ")
+    save_recipes(old_name + ".json")
+    base_items, recipes = load_recipes(new_name + ".json")
+
+
 def print_base_items():
     print("Raw materials:")
     options = list(range(len(base_items)))
@@ -343,7 +361,9 @@ def main():
         # export - export prev recipe str to file
         # rmb - remove base item: done
         # rmr - remove recipe: done
-        # sdb - switch recipe db
+        # switch - switch recipe db
+        # rendb - rename recipe db
+        # rmdb - remove recipe db
 
         match request:
             case "ls":
@@ -359,10 +379,10 @@ def main():
             case "exit":
                 break
             case "help":
-                commands = ["ls", "change", "flush", "exit", "help", "export", "rmb", "rmr"]
+                commands = ["ls", "change", "flush", "exit", "help", "export", "rmb", "rmr", "switch", "lsdb"]
                 descriptions = ["List all recipes", "Change a recipe", "Clear recipes and raw items", "Exit program",
                                 "Print this help message", "Export the previous recipe string to a file",
-                                "Remove a base item", "Remove a recipe"]
+                                "Remove a base item", "Remove a recipe", "Switch to a different recipe db", "list all recipe dbs"]
 
                 display_options(commands, descriptions)
                 continue
@@ -375,8 +395,10 @@ def main():
             case "rmr":
                 remove_recipe()
                 continue
-            case "sdb":
-                pass  # maybe add this in the distant future
+            case "switch":
+                new_db()
+            case "lsdb":
+                lsdb()
             case _:
                 req_item = request.split(" x")[0]
                 req_amount = 1 if " x" not in request else int(request.split(" x")[1])
@@ -402,12 +424,12 @@ def main():
                     # prompts user to add item to recipe db
                     add_recipe_prompt(req_item)
 
-                save_recipes()
+                save_recipes("recipes.json")
 
                 # reset raw_required dict
                 raw_required = {}
 
-    save_recipes()
+    save_recipes("recipes.json")
 
 
 if __name__ == '__main__':
